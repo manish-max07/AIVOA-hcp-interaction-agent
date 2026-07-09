@@ -17,7 +17,9 @@ describe what you would do. Pick exactly one tool per turn based on intent:
 - correcting an already-logged field -> edit_interaction
 - scheduling a reminder/follow-up -> schedule_followup
 - checking for risky/compliance language -> compliance_flag
-- asking what to do next -> suggest_next_best_action
+- - asking what to do next -> suggest_next_best_action
+- looking up or registering an HCP's profile details -> search_hcp
+- asking about past interactions/history with an HCP -> get_interaction_history
 After the tool runs, reply in one short, friendly sentence confirming what happened."""
 
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from langchain_core.tools import tool
 from langchain_groq import ChatGroq
 from sqlalchemy.orm import Session
-from .models import Interaction
+from .models import Interaction, HCP
 
 
 def _get_extraction_llm():
@@ -43,8 +43,11 @@ JSON schema:
 }}"""
         extracted = _llm_extract_json(prompt)
 
+        hcp_name = extracted.get("hcp_name") or form_state.get("hcp_name")
+
         record = Interaction(
-            hcp_name=extracted.get("hcp_name"),
+            hcp_id=form_state.get("hcp_id"),
+            hcp_name=hcp_name,
             interaction_date=_safe_date(extracted.get("interaction_date")),
             interaction_type=extracted.get("interaction_type"),
             products_discussed=extracted.get("products_discussed"),
@@ -56,9 +59,47 @@ JSON schema:
         db.commit()
         db.refresh(record)
 
+        extracted["hcp_name"] = hcp_name
         form_state.update(extracted)
         form_state["interaction_id"] = record.id
         return f"Logged interaction #{record.id} for {extracted.get('hcp_name', 'the HCP')}."
+    
+    @tool
+    def search_hcp(user_message: str) -> str:
+        """Use this when the user mentions an HCP by name and you need to
+        look up their existing profile (specialty, hospital, past history),
+        or to create a new HCP profile if one doesn't exist yet."""
+        prompt = f"""Extract the HCP's name and any profile details mentioned
+(specialty, hospital, phone, email) from this message. Return ONLY JSON:
+{{"name": string or null, "specialty": string or null, "hospital": string or null,
+"phone": string or null, "email": string or null}}.
+
+Message: "{user_message}\""""
+        extracted = _llm_extract_json(prompt)
+        name = extracted.get("name")
+        if not name:
+            return "I couldn't identify an HCP name in that message."
+
+        hcp = db.query(HCP).filter(HCP.name.ilike(f"%{name}%")).first()
+        if hcp:
+            past_count = len(hcp.interactions)
+            form_state["hcp_id"] = hcp.id
+            form_state["hcp_name"] = hcp.name
+            return f"Found existing profile for {hcp.name} ({hcp.specialty or 'specialty unknown'}, {past_count} past interaction(s))."
+
+        hcp = HCP(
+            name=name,
+            specialty=extracted.get("specialty"),
+            hospital=extracted.get("hospital"),
+            phone=extracted.get("phone"),
+            email=extracted.get("email"),
+        )
+        db.add(hcp)
+        db.commit()
+        db.refresh(hcp)
+        form_state["hcp_id"] = hcp.id
+        form_state["hcp_name"] = hcp.name
+        return f"Created a new HCP profile for {hcp.name}."
 
     @tool
     def edit_interaction(user_message: str) -> str:
@@ -154,7 +195,43 @@ Latest message: "{user_message}\""""
         resp = _get_extraction_llm().invoke(prompt)
         return resp.content.strip()
 
-    return [log_interaction, edit_interaction, schedule_followup, compliance_flag, suggest_next_best_action]
+    @tool
+    def get_interaction_history(user_message: str) -> str:
+        """Use this when the user asks about past interactions with an HCP,
+        e.g. 'what have I discussed with Dr. Sharma before?' or 'show her history'."""
+        prompt = f"""Extract the HCP's name being asked about from this message.
+Return ONLY JSON: {{"name": string or null}}.
+
+Message: "{user_message}\""""
+        extracted = _llm_extract_json(prompt)
+        name = extracted.get("name")
+
+        if not name:
+            hcp_id = form_state.get("hcp_id")
+            hcp = db.query(HCP).filter(HCP.id == hcp_id).first() if hcp_id else None
+        else:
+            hcp = db.query(HCP).filter(HCP.name.ilike(f"%{name}%")).first()
+
+        if not hcp:
+            return "I couldn't find that HCP in the records."
+
+        past = (
+            db.query(Interaction)
+            .filter(Interaction.hcp_id == hcp.id)
+            .order_by(Interaction.interaction_date.desc())
+            .all()
+        )
+        if not past:
+            return f"No past interactions found for {hcp.name}."
+
+        summary_lines = [
+            f"- {i.interaction_date.date() if i.interaction_date else 'unknown date'}: "
+            f"{i.products_discussed or 'general discussion'} ({i.sentiment or 'no sentiment recorded'})"
+            for i in past
+        ]
+        return f"History for {hcp.name} ({len(past)} interaction(s)):\n" + "\n".join(summary_lines)
+
+    return [log_interaction, edit_interaction, schedule_followup, compliance_flag, suggest_next_best_action, search_hcp, get_interaction_history]
 
 
 def _safe_date(date_str):

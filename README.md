@@ -3,8 +3,8 @@
 An AI-first "Log Interaction" screen for a Healthcare Professional (HCP) CRM.
 Instead of filling out a form manually, field reps describe their interaction
 in natural language to an AI assistant, which uses a **LangGraph agent**
-(powered by Groq) to extract structured data and populate the form via tool
-calls.
+(powered by Groq) to extract structured data, look up or create HCP profiles,
+and populate the form via tool calls.
 
 ## Architecture
 
@@ -19,12 +19,14 @@ FastAPI backend
         ▼
 LangGraph agent (Groq openai/gpt-oss-20b)
         │
-        ▼ (routes to one of 5 tools based on intent)
-  1. log_interaction        — extract + create a new interaction record
-  2. edit_interaction       — correct specific fields on an existing record
-  3. schedule_followup      — parse and set a follow-up date/note
-  4. compliance_flag        — detect compliance-risk language
+        ▼ (routes to one of 7 tools based on intent)
+  1. log_interaction         — extract + create a new interaction record
+  2. edit_interaction        — correct specific fields on an existing record
+  3. schedule_followup       — parse and set a follow-up date/note
+  4. compliance_flag         — detect compliance-risk language
   5. suggest_next_best_action — recommend what to discuss next visit
+  6. search_hcp              — look up an existing HCP profile, or create one
+  7. get_interaction_history — summarize past interactions with an HCP
         │
         ▼
 Postgres/MySQL (via SQLAlchemy) — falls back to local SQLite if no DATABASE_URL is set
@@ -32,6 +34,17 @@ Postgres/MySQL (via SQLAlchemy) — falls back to local SQLite if no DATABASE_UR
 
 Routing (which tool fires) and extraction (what values go in the form) are
 both decided by the LLM at runtime — nothing is hard-coded with regex/if-else.
+
+## Data model
+
+HCPs are first-class entities, not just a name string on an interaction:
+
+- **`HCP`** — `name`, `specialty`, `hospital`, `phone`, `email`
+- **`Interaction`** — linked to an HCP via `hcp_id` (foreign key), plus a
+  denormalized `hcp_name` copy for quick display without a join
+
+This lets `get_interaction_history` and `suggest_next_best_action` reason
+over an HCP's *entire* interaction history, not just the current form.
 
 ## A note on the model
 
@@ -50,8 +63,8 @@ backend/
   app/
     main.py       # FastAPI app + /chat and /interactions endpoints
     agent.py      # LangGraph graph: system prompt, tool binding, routing
-    tools.py      # the 5 tools (extraction logic + DB writes)
-    models.py     # SQLAlchemy Interaction model
+    tools.py      # the 7 tools (extraction logic + DB writes)
+    models.py     # SQLAlchemy HCP + Interaction models (with FK relationship)
     schemas.py    # Pydantic request/response schemas
     database.py   # DB engine/session setup
   requirements.txt
@@ -88,16 +101,20 @@ on `localhost:8000`.
 
 ## Example flow
 
-1. Type: *"Met Dr. Sharma today, discussed CardioPlus, she seemed positive, shared brochures"*
-   → `log_interaction` fires → form fills in HCP name, date, product, sentiment, materials shared, notes.
-2. Type: *"Actually change the sentiment to neutral"*
+1. Type: *"Look up Dr. Sharma, she's a cardiologist at Apollo Hospital"*
+   → `search_hcp` fires → creates or finds her profile.
+2. Type: *"Today I met her and discussed CardioPlus, she seemed positive, shared brochures"*
+   → `log_interaction` fires → form fills in date, product, sentiment, materials, notes, linked to her profile.
+3. Type: *"Actually change the sentiment to neutral"*
    → `edit_interaction` fires → only the sentiment field updates.
-3. Type: *"Remind me to follow up with her next month about trial data"*
+4. Type: *"Remind me to follow up with her next month about trial data"*
    → `schedule_followup` fires → follow-up date/notes fill in.
-4. Type: *"I told her the drug cures everything with zero side effects"*
+5. Type: *"I told her the drug cures everything with zero side effects"*
    → `compliance_flag` fires → flags the interaction and shows a warning on the form.
-5. Type: *"What should I bring up next time?"*
+6. Type: *"What should I bring up next time?"*
    → `suggest_next_best_action` fires → assistant suggests a talking point.
+7. Type: *"What have I discussed with Dr. Sharma before?"*
+   → `get_interaction_history` fires → summarizes her past logged interactions.
 
 ## Notes / assumptions
 
@@ -109,3 +126,6 @@ on `localhost:8000`.
   `DATABASE_URL` to point at Postgres or MySQL for the "real" deployment.
 - `materials_shared` (brochures, samples, etc.) is extracted alongside the
   other fields per the task's example ("shared the brochures").
+- `log_interaction` preserves an HCP name already set earlier in the
+  conversation (e.g. via `search_hcp`) rather than overwriting it with null
+  if a later message doesn't repeat the name.
