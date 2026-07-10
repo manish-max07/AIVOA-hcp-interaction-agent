@@ -25,7 +25,10 @@ const interactionSlice = createSlice({
   initialState,
   reducers: {
     formStateUpdated(state, action) {
-      Object.assign(state, action.payload);
+      if (action.payload) {
+        const { messages, ...formFields } = action.payload;
+        Object.assign(state, formFields);
+      }
     },
     messageAdded(state, action) {
       state.messages.push(action.payload);
