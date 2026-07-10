@@ -78,6 +78,25 @@ frontend/
   package.json
 ```
 
+## Frontend notes
+
+- Styled with Tailwind CSS (installed via npm/PostCSS, not the CDN build).
+- Icons throughout the form and chat header use `react-icons` (Lucide set)
+  instead of emoji, for a more consistent, professional look.
+- Chat bubbles are visually distinct by sender: user messages are solid blue
+  and right-aligned, assistant messages are white/bordered and left-aligned.
+  Consecutive messages from the same sender are spaced tighter than a
+  switch between senders.
+- The left panel shows a small "Recent" strip of the last few logged
+  interactions, and includes a few disabled, tooltip-labeled buttons
+  ("Search/Add", "Add Sample", "Summarize from Voice Note") purely for
+  visual completeness against the reference mockup in the task video. These
+  are non-functional by design — the form must stay 100% AI-driven, so
+  nothing on the left panel is clickable/editable by the user.
+- `formStateUpdated` in `redux/interactionSlice.js` merges into the existing
+  state rather than replacing it, so the chat message history isn't wiped
+  out each time the form updates.
+
 ## Running it locally
 
 ### Backend
