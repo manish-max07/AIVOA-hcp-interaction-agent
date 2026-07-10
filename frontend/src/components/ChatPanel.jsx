@@ -9,6 +9,7 @@ import {
   LuWrench,
   LuSparkles,
   LuWifi,
+  LuX,
 } from "react-icons/lu";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -101,7 +102,7 @@ function EmptyState({ suggestions, onSelect }) {
   );
 }
 
-export default function ChatPanel() {
+export default function ChatPanel({ onMobileClose }) {
   const dispatch = useDispatch();
   const state = useSelector((s) => s.interaction);
   const [input, setInput] = useState("");
@@ -160,9 +161,20 @@ export default function ChatPanel() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-          <LuWifi className="w-3 h-3" />
-          Online
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+            <LuWifi className="w-3 h-3" />
+            Online
+          </div>
+          {onMobileClose && (
+            <button
+              onClick={onMobileClose}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 md:hidden transition-colors"
+              title="Close chat"
+            >
+              <LuX className="w-5 h-5" />
+            </button>
+          )}
         </div>
       </div>
 

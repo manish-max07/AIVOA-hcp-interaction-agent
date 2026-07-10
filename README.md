@@ -81,6 +81,7 @@ frontend/
 ## Frontend notes
 
 - Styled with Tailwind CSS (installed via npm/PostCSS, not the CDN build).
+- **Responsive Layout**: Displays as a split-screen dashboard on desktop screens (Left: Interaction Form, Right: Chat Panel). On mobile and smartphones, the Interaction Form occupies 100% of the screen, and the AI Assistant becomes a floating bot launcher button. Reps tap this button to slide the chat drawer in/out, and can close it via the header close trigger or by clicking the floating icon again.
 - Icons throughout the form and chat header use `react-icons` (Lucide set)
   instead of emoji, for a more consistent, professional look.
 - Chat bubbles are visually distinct by sender: user messages are solid blue
